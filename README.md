@@ -6,4 +6,4 @@
    find "Insecure origins treated as secure" flag
    put your url in the input field like: http://192.168.68.66:8000 and set enable
 
-# [Demo Video Link](https://youtu.be/OffKicl_H7M)
+# [Demo Video Link](https://www.youtube.com/watch?v=iQoCBpZBxj0)
