@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Virtual Hat Try-On</title>
+    <style>
+      @import url("https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;600;700&display=swap");
+
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      :root {
+        --bg-dark: #0a0a0f;
+        --surface: #14141f;
+        --surface-light: #1e1e2e;
+        --accent: #00ffd5;
+        --accent-dim: #00ffd540;
+        --text: #f0f0f0;
+        --text-dim: #808090;
+      }
+
+      body {
+        font-family: "Space Mono", monospace;
+        background: var(--bg-dark);
+        color: var(--text);
+        min-height: 100vh;
+        overflow: hidden;
+      }
+
+      .app-container {
+        display: flex;
+        flex-direction: column;
+        height: 100vh;
+        position: relative;
+      }
+
+      header {
+        padding: 1rem 2rem;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        background: linear-gradient(
+          180deg,
+          var(--surface) 0%,
+          transparent 100%
+        );
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        z-index: 100;
+      }
+
+      .logo {
+        font-family: "Syne", sans-serif;
+        font-weight: 700;
+        font-size: 1.5rem;
+        letter-spacing: -0.02em;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+      }
+
+      .logo-icon {
+        width: 32px;
+        height: 32px;
+        background: var(--accent);
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .logo-icon svg {
+        width: 20px;
+        height: 20px;
+      }
+
+      .status-badge {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.5rem 1rem;
+        background: var(--surface-light);
+        border-radius: 100px;
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+      }
+
+      .status-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #ff4444;
+        animation: pulse 2s infinite;
+      }
+
+      .status-dot.active {
+        background: var(--accent);
+      }
+
+      @keyframes pulse {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.5;
+        }
+      }
+
+      .canvas-container {
+        flex: 1;
+        position: relative;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 80px 1rem 1rem 1rem;
+        overflow: hidden;
+      }
+
+      #video {
+        position: absolute;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        transform: scaleX(-1);
+        z-index: 1;
+      }
+
+      #canvas {
+        position: absolute;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        z-index: 2;
+        pointer-events: none;
+      }
+
+      .controls-panel {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        background: var(--surface);
+        border: 1px solid var(--surface-light);
+        border-radius: 24px 24px 0 0;
+        padding: 0 1.5rem;
+        padding-bottom: calc(1.5rem + env(safe-area-inset-bottom, 0px));
+        backdrop-filter: blur(20px);
+        z-index: 10;
+        transform: translateY(var(--panel-offset, 0));
+        transition: transform 0.3s ease;
+        touch-action: none;
+      }
+
+      .controls-panel.collapsed {
+        --panel-offset: calc(100% - 50px);
+      }
+
+      .drag-handle {
+        width: 100%;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 0.75rem 0;
+        cursor: grab;
+      }
+
+      .drag-handle:active {
+        cursor: grabbing;
+      }
+
+      .drag-bar {
+        width: 40px;
+        height: 4px;
+        background: var(--text-dim);
+        border-radius: 2px;
+        margin-bottom: 0.25rem;
+      }
+
+      .drag-hint {
+        font-size: 0.65rem;
+        color: var(--text-dim);
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+      }
+
+      .controls-content {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+      }
+
+      .control-group {
+        margin-bottom: 0;
+      }
+
+      .btn {
+        width: 100%;
+        padding: 1rem 1.5rem;
+        border: none;
+        border-radius: 8px;
+        font-family: "Space Mono", monospace;
+        font-size: 0.875rem;
+        font-weight: 700;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        margin-top: 0.5rem;
+        flex-shrink: 0;
+      }
+
+      @media (min-width: 769px) {
+        .controls-panel {
+          position: absolute;
+          right: 2rem;
+          left: auto;
+          bottom: 2rem;
+          width: 300px;
+          border-radius: 16px;
+          padding: 0 1.5rem 1.5rem;
+        }
+
+        .controls-panel.collapsed {
+          --panel-offset: calc(100% - 50px);
+        }
+      }
+
+      .controls-title {
+        font-family: "Syne", sans-serif;
+        font-weight: 600;
+        font-size: 0.875rem;
+        text-transform: uppercase;
+        letter-spacing: 0.15em;
+        color: var(--text-dim);
+        margin-bottom: 1rem;
+      }
+
+      .control-label {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 0.5rem;
+        font-size: 0.75rem;
+        color: var(--text-dim);
+      }
+
+      .control-value {
+        color: var(--accent);
+        font-weight: 700;
+      }
+
+      input[type="range"] {
+        width: 100%;
+        height: 4px;
+        -webkit-appearance: none;
+        background: var(--surface-light);
+        border-radius: 2px;
+        outline: none;
+      }
+
+      input[type="range"]::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        width: 16px;
+        height: 16px;
+        background: var(--accent);
+        border-radius: 50%;
+        cursor: pointer;
+        transition: transform 0.15s ease;
+      }
+
+      input[type="range"]::-webkit-slider-thumb:hover {
+        transform: scale(1.2);
+      }
+
+      .btn-primary {
+        background: var(--accent);
+        color: var(--bg-dark);
+      }
+
+      .btn-primary:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 24px var(--accent-dim);
+      }
+
+      .btn-primary:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+        transform: none;
+        box-shadow: none;
+      }
+
+      .fps-counter {
+        position: absolute;
+        bottom: 2rem;
+        left: 2rem;
+        padding: 0.5rem 1rem;
+        background: var(--surface);
+        border-radius: 8px;
+        font-size: 0.75rem;
+        color: var(--text-dim);
+      }
+
+      .fps-value {
+        color: var(--accent);
+        font-weight: 700;
+      }
+
+      .loading-overlay {
+        position: fixed;
+        inset: 0;
+        background: var(--bg-dark);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+        transition: opacity 0.5s ease;
+      }
+
+      .loading-overlay.hidden {
+        opacity: 0;
+        pointer-events: none;
+      }
+
+      .loader {
+        width: 60px;
+        height: 60px;
+        border: 3px solid var(--surface-light);
+        border-top-color: var(--accent);
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+      }
+
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      .loading-text {
+        margin-top: 1.5rem;
+        font-size: 0.875rem;
+        color: var(--text-dim);
+      }
+
+      .instructions {
+        position: absolute;
+        bottom: 2rem;
+        left: 50%;
+        transform: translateX(-50%);
+        text-align: center;
+        color: var(--text-dim);
+        font-size: 0.75rem;
+        max-width: 400px;
+      }
+
+      @media (max-width: 768px) {
+        header {
+          padding: 1rem;
+        }
+
+        .fps-counter {
+          bottom: auto;
+          top: 5rem;
+          left: 1rem;
+        }
+
+        .instructions {
+          display: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="loading-overlay" id="loadingOverlay">
+      <div class="loader"></div>
+      <p class="loading-text">Initializing AR Engine...</p>
+    </div>
+
+    <div class="app-container">
+      <header>
+        <div class="logo">
+          <div class="logo-icon">
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <path
+                d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"
+              />
+            </svg>
+          </div>
+          <span>HatAR</span>
+        </div>
+        <div class="status-badge">
+          <div class="status-dot" id="statusDot"></div>
+          <span id="statusText">Initializing</span>
+        </div>
+      </header>
+
+      <div class="canvas-container">
+        <video id="video" playsinline></video>
+        <canvas id="canvas"></canvas>
+      </div>
+
+      <div class="controls-panel" id="controlsPanel">
+        <div class="drag-handle" id="dragHandle">
+          <div class="drag-bar"></div>
+          <span class="drag-hint">Drag to hide</span>
+        </div>
+
+        <div class="controls-content">
+          <div class="controls-title">Hat Adjustments</div>
+
+          <div class="control-group">
+            <div class="control-label">
+              <span>Scale</span>
+              <span class="control-value" id="scaleValue">1.0</span>
+            </div>
+            <input
+              type="range"
+              id="scaleSlider"
+              min="0.5"
+              max="2"
+              step="0.1"
+              value="1"
+            />
+          </div>
+
+          <div class="control-group">
+            <div class="control-label">
+              <span>Vertical Offset</span>
+              <span class="control-value" id="yOffsetValue">0</span>
+            </div>
+            <input
+              type="range"
+              id="yOffsetSlider"
+              min="-100"
+              max="100"
+              step="5"
+              value="0"
+            />
+          </div>
+
+          <div class="control-group">
+            <div class="control-label">
+              <span>Forward/Back</span>
+              <span class="control-value" id="zOffsetValue">0</span>
+            </div>
+            <input
+              type="range"
+              id="zOffsetSlider"
+              min="-50"
+              max="50"
+              step="5"
+              value="0"
+            />
+          </div>
+
+          <div class="control-group">
+            <div class="control-label">
+              <span>Smoothing</span>
+              <span class="control-value" id="smoothingValue">0.5</span>
+            </div>
+            <input
+              type="range"
+              id="smoothingSlider"
+              min="0"
+              max="0.9"
+              step="0.1"
+              value="0.5"
+            />
+          </div>
+
+          <button class="btn btn-primary" id="startBtn">Start Camera</button>
+        </div>
+      </div>
+
+      <div class="fps-counter">
+        FPS: <span class="fps-value" id="fpsValue">--</span>
+      </div>
+
+      <div class="instructions">
+        Position your face in the center of the frame. Adjust sliders to
+        fine-tune hat placement.
+      </div>
+    </div>
+
+    <!-- MediaPipe -->
+    <script
+      src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@0.4/face_mesh.js"
+      crossorigin="anonymous"
+    ></script>
+    <script
+      src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3/camera_utils.js"
+      crossorigin="anonymous"
+    ></script>
+
+    <!-- Three.js via ES Modules -->
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three@0.157.0/build/three.module.js",
+          "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.157.0/examples/jsm/"
+        }
+      }
+    </script>
+
+    <script type="module">
+      import * as THREE from "three";
+      import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+
+      // Make available globally
+      window.THREE = THREE;
+      window.GLTFLoader = GLTFLoader;
+
+      // Signal that Three.js is ready
+      window.threeReady = true;
+      window.dispatchEvent(new Event("threeReady"));
+    </script>
+
+    <!-- App Modules -->
+    <script src="js/utils.js"></script>
+    <script src="js/mediapipe-handler.js"></script>
+    <script src="js/hat-renderer.js"></script>
+    <script src="js/app.js"></script>
+  </body>
+</html>
